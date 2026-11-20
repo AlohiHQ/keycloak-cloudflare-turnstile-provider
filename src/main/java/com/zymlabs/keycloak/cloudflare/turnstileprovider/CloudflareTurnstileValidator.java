@@ -2,7 +2,6 @@ package com.zymlabs.keycloak.cloudflare.turnstileprovider;
 
 import org.jboss.logging.Logger;
 import org.keycloak.authentication.AuthenticationFlowContext;
-import org.keycloak.models.AuthenticatorConfigModel;
 
 import java.util.Map;
 
@@ -111,13 +110,15 @@ public class CloudflareTurnstileValidator {
      * @param ipAddress Client IP address
      * @param config Authenticator configuration containing siteKey, secretKey, etc.
      * @param service CloudflareTurnstileService instance for verification
+     * @param expectedCdata The cdata this session's widget was rendered with; null leaves it unchecked
      * @return ValidationResult containing success status and verification details
      */
     public static ValidationResult validateTurnstile(
             String turnstileResponse,
             String ipAddress,
             Map<String, String> config,
-            CloudflareTurnstileService service) {
+            CloudflareTurnstileService service,
+            String expectedCdata) {
 
         // Extract configuration
         String ipAllowlist = config.getOrDefault(CloudflareTurnstileAuthenticator.CONFIG_IP_ALLOWLIST,
@@ -150,7 +151,8 @@ public class CloudflareTurnstileValidator {
 
         // Verify with Cloudflare
         try {
-            CloudflareTurnstileService.TurnstileVerificationResult result = service.verify(turnstileResponse, ipAddress);
+            CloudflareTurnstileService.TurnstileVerificationResult result = service.verify(turnstileResponse, ipAddress,
+                    expectedCdata);
 
             if (result.isSuccess()) {
                 logger.infof("Turnstile verification successful for IP %s", ipAddress);

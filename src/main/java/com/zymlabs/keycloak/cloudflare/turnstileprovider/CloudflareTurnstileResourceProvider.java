@@ -1,14 +1,10 @@
 package com.zymlabs.keycloak.cloudflare.turnstileprovider;
 
+import jakarta.ws.rs.*;
+import jakarta.ws.rs.core.Response;
 import org.jboss.logging.Logger;
 import org.keycloak.services.resource.RealmResourceProvider;
 
-import jakarta.ws.rs.GET;
-import jakarta.ws.rs.Path;
-import jakarta.ws.rs.PathParam;
-import jakarta.ws.rs.Produces;
-import jakarta.ws.rs.QueryParam;
-import jakarta.ws.rs.core.Response;
 import java.io.InputStream;
 
 /**
@@ -87,7 +83,8 @@ public class CloudflareTurnstileResourceProvider implements RealmResourceProvide
             @QueryParam("siteKey") String siteKey,
             @QueryParam("mode") String mode,
             @QueryParam("theme") String theme,
-            @QueryParam("debug") String debug) {
+            @QueryParam("debug") String debug,
+            @QueryParam("cdata") String cdata) {
 
         logger.debugf("Serving Turnstile config: siteKey=%s, mode=%s, theme=%s, debug=%s",
                      siteKey != null ? "***" : "null", mode, theme, debug);
@@ -101,14 +98,17 @@ public class CloudflareTurnstileResourceProvider implements RealmResourceProvide
                     .build();
         }
 
-        return Response.ok(configScript(siteKey, mode, theme, debug))
+        return Response.ok(configScript(siteKey, mode, theme, debug, cdata))
                 .header("Content-Type", "application/javascript; charset=UTF-8")
                 .header("Cache-Control", "no-cache, no-store, must-revalidate") // Don't cache config
                 .build();
     }
 
-    /** The config.js script: sets the widget settings as global variables. */
-    static String configScript(String siteKey, String mode, String theme, String debug) {
+    /**
+     * The config.js script: sets the widget settings as global variables, and the session's cdata
+     * for the injected widget when there is one.
+     */
+    static String configScript(String siteKey, String mode, String theme, String debug, String cdata) {
         // Use defaults if not specified
         String widgetMode = WidgetAppearance.fromConfig(mode).value();
         String widgetTheme = (theme != null && !theme.trim().isEmpty()) ? theme : "auto";
@@ -123,6 +123,10 @@ public class CloudflareTurnstileResourceProvider implements RealmResourceProvide
                 "window.TURNSTILE_CONFIG.siteKey = %s;\n" +
                 "window.TURNSTILE_CONFIG.mode = %s;\n" +
                 "window.TURNSTILE_CONFIG.theme = %s;\n" +
+                // Deliberately not under TURNSTILE_CONFIG: this is one session's state, not a widget setting
+                (cdata == null || cdata.isEmpty() ? "" :
+                        "window.TURNSTILE_SESSION = window.TURNSTILE_SESSION || {};\n"
+                        + "window.TURNSTILE_SESSION.cdata = " + escapeJavaScriptString(cdata) + ";\n") +
                 (enableDebugLogging ? "console.log('[Turnstile Config] Configuration loaded:', window.TURNSTILE_CONFIG);\n" : "") +
                 // Tells an injector that ran first: themes that add these scripts with JavaScript run them in any order
                 "document.dispatchEvent(new Event('cloudflare-turnstile:config'));\n",

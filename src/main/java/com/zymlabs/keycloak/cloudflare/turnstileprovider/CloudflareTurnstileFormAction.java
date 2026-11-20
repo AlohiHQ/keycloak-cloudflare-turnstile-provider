@@ -1,24 +1,15 @@
 package com.zymlabs.keycloak.cloudflare.turnstileprovider;
 
+import jakarta.ws.rs.core.MultivaluedMap;
 import org.jboss.logging.Logger;
 import org.keycloak.authentication.FormAction;
 import org.keycloak.authentication.FormContext;
 import org.keycloak.authentication.ValidationContext;
-import org.keycloak.connections.jpa.JpaConnectionProvider;
 import org.keycloak.events.Errors;
 import org.keycloak.forms.login.LoginFormsProvider;
-import org.keycloak.models.AuthenticationExecutionModel;
-import org.keycloak.models.AuthenticationFlowModel;
-import org.keycloak.models.AuthenticatorConfigModel;
-import org.keycloak.models.KeycloakSession;
-import org.keycloak.models.RealmModel;
-import org.keycloak.models.UserModel;
+import org.keycloak.models.*;
 import org.keycloak.models.utils.FormMessage;
-import org.keycloak.sessions.AuthenticationSessionModel;
 
-import jakarta.persistence.EntityManager;
-import jakarta.ws.rs.core.MultivaluedMap;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -117,6 +108,7 @@ public class CloudflareTurnstileFormAction implements FormAction {
         // Set common attributes
         form.setAttribute("turnstileRequired", true);
         form.setAttribute("turnstileSiteKey", siteKey);
+        form.setAttribute("turnstileCdata", CloudflareTurnstileHelper.sessionCdata(context.getAuthenticationSession()));
         widgetAppearance.setAttributes(form);
         form.setAttribute("turnstileTheme", widgetTheme);
         form.setAttribute("turnstileSkipped", false);
@@ -153,7 +145,8 @@ public class CloudflareTurnstileFormAction implements FormAction {
 
         // Build URLs using helper methods (handles context path automatically via UriInfo)
         String configPath = CloudflareTurnstileHelper.buildConfigJsUrl(
-                context.getUriInfo(), realmName, providerId, siteKey, widgetMode, widgetTheme, enableDebugLogging);
+                context.getUriInfo(), realmName, providerId, siteKey, widgetMode, widgetTheme, enableDebugLogging,
+                CloudflareTurnstileHelper.sessionCdata(context.getAuthenticationSession()));
         form.addScript(configPath);
 
         String injectorPath = CloudflareTurnstileHelper.buildInjectorJsUrl(
@@ -272,7 +265,8 @@ public class CloudflareTurnstileFormAction implements FormAction {
         try {
             try (CloudflareTurnstileService service = new CloudflareTurnstileService(secretKey, connectTimeout, readTimeout)) {
                 validationResult = CloudflareTurnstileValidator.validateTurnstile(
-                        turnstileResponse, ipAddress, configMap, service);
+                        turnstileResponse, ipAddress, configMap, service,
+                        context.getAuthenticationSession().getAuthNote(CloudflareTurnstileHelper.CDATA_NOTE));
             }
         } catch (Exception e) {
             logger.errorf(e, "Error verifying Turnstile token: %s", e.getMessage());

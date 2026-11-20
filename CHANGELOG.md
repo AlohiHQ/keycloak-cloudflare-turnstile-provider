@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Session binding for Turnstile tokens (`cdata`).** The server now generates a random value for each
+  authentication session, renders it as the widget's `data-cdata`, and checks that the token Cloudflare
+  accepts echoes it back. A token solved somewhere else — in a token farm, or against another user's
+  page — is still valid to Cloudflare but is refused here, failing with the error code
+  `keycloak-cdata-mismatch` and following the step's **Verification Failure Action** like any other
+  refusal. The value is kept as the authentication-session note `cf-turnstile-cdata`; it is neither
+  secret nor signed, so it travels in the page and in the `config.js` query string. `SEPARATE_PAGE`,
+  `SCRIPT_INJECTION` and the bundled `CUSTOM_THEME` templates carry it with no change on your part.
+
+  **BREAKING for third-party `CUSTOM_THEME` templates.** A template that renders `data-sitekey`
+  without `data-cdata` refuses *every* sign-in once this version is installed — the realm locks out,
+  it is not a weakened check. Add `data-cdata="${turnstileCdata!''}"` next to `data-sitekey` in every
+  template that renders the widget, and deploy the theme **with or before** the provider jar: a theme
+  updated early is harmless, a jar updated early is not. Themes that render their own hidden-field
+  markers for the injector add `<input type="hidden" name="turnstile-cdata" value="${turnstileCdata!''}">`
+  instead. See [Custom theme integration](docs/CUSTOM-THEME-INTEGRATION.md#session-binding-required).
+  Cloudflare's testing keys answer from a canned response that echoes no cdata, so the check is
+  skipped against them: a template that drops the attribute still passes every test on
+  `1x00000000000000000000AA` and fails on the real key. Check the rendered HTML, not just the sign-in.
 - **Generated docs screenshots:** `docs/images/` (with `manifest.json` and the `docs/screens.md`
   gallery) is taken by the `docs-screens` Playwright project (`npm run docs-screens` in `e2e/`): sign-in,
   registration and reset pages with each implementation method, refusals, a phone-sized sign-in and the

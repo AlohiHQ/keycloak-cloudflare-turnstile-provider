@@ -29,6 +29,13 @@ public class CloudflareTurnstileService implements Closeable {
 
     private static final Logger logger = Logger.getLogger(CloudflareTurnstileService.class);
     private static final String SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
+
+    /**
+     * Error code for a token Cloudflare accepted but that was solved for another session: its cdata
+     * isn't the one this session's widget was rendered with. Namespaced, as Cloudflare's own error
+     * codes are unprefixed and this one is ours.
+     */
+    public static final String CDATA_MISMATCH = "keycloak-cdata-mismatch";
     private static final ObjectMapper objectMapper = new ObjectMapper();
 
     private final String secretKey;
@@ -67,15 +74,19 @@ public class CloudflareTurnstileService implements Closeable {
     }
 
     /**
-     * Verify a Turnstile token.
+     * Verify a Turnstile token, and that it was solved for this session.
      *
      * @param token The cf-turnstile-response token from the client
      * @param remoteIp The user's IP address (optional but recommended)
-     * @return Verification result: Cloudflare's answer about the token
+     * @param expectedCdata The cdata this session's widget was rendered with, which the token must
+     *        echo back to belong to it; null leaves that unchecked, as does a testing secret key,
+     *        whose canned answer echoes nothing
+     * @return Verification result: Cloudflare's answer about the token, failed with
+     *         {@link #CDATA_MISMATCH} when the token is Cloudflare-valid but another session's
      * @throws UnavailableException when Cloudflare couldn't be asked, or its answer couldn't be read
      *         (the caller's error handling mode, FAIL_OPEN or FAIL_CLOSED, decides)
      */
-    public TurnstileVerificationResult verify(String token, String remoteIp) {
+    public TurnstileVerificationResult verify(String token, String remoteIp, String expectedCdata) {
         if (token == null || token.trim().isEmpty()) {
             logger.warn("Turnstile token is null or empty");
             return new TurnstileVerificationResult(false, "missing-input-response", null, null, null);
@@ -101,36 +112,67 @@ public class CloudflareTurnstileService implements Closeable {
 
             logger.debugf("Turnstile API response: %s", responseBody);
 
-            // Parse JSON response
-            JsonNode jsonResponse = objectMapper.readTree(responseBody);
-
-            boolean success = jsonResponse.has("success") && jsonResponse.get("success").asBoolean();
-            String challengeTs = jsonResponse.has("challenge_ts") ? jsonResponse.get("challenge_ts").asText() : null;
-            String hostname = jsonResponse.has("hostname") ? jsonResponse.get("hostname").asText() : null;
-
-            // Extract error codes if present
-            String errorCodes = null;
-            if (jsonResponse.has("error-codes") && jsonResponse.get("error-codes").isArray()) {
-                List<String> errors = new ArrayList<>();
-                jsonResponse.get("error-codes").forEach(node -> errors.add(node.asText()));
-                errorCodes = String.join(",", errors);
-            }
-
-            TurnstileVerificationResult result = new TurnstileVerificationResult(
-                    success, errorCodes, challengeTs, hostname, responseBody);
-
-            if (success) {
-                logger.infof("Turnstile verification successful for IP: %s, hostname: %s", remoteIp, hostname);
-            } else {
-                logger.warnf("Turnstile verification failed for IP: %s, errors: %s", remoteIp, errorCodes);
-            }
-
-            return result;
+            return readResponse(responseBody, expectedCdata, remoteIp);
 
         } catch (IOException e) {
             // Not an answer about the token: an outage, a timeout, or a reply that isn't Cloudflare's JSON
             throw new UnavailableException("Cloudflare Turnstile couldn't be asked: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Cloudflare's answer about a token, read and checked against this session's binding.
+     *
+     * <p>Package-private so the parsing and the cdata check can be tested without an HTTP round trip.
+     *
+     * @throws IOException when the body isn't Cloudflare's JSON, which {@link #verify} treats as not
+     *         having been able to ask
+     */
+    TurnstileVerificationResult readResponse(String responseBody, String expectedCdata, String remoteIp)
+            throws IOException {
+        JsonNode jsonResponse = objectMapper.readTree(responseBody);
+
+        boolean success = jsonResponse.has("success") && jsonResponse.get("success").asBoolean();
+        String challengeTs = jsonResponse.has("challenge_ts") ? jsonResponse.get("challenge_ts").asText() : null;
+        String hostname = jsonResponse.has("hostname") ? jsonResponse.get("hostname").asText() : null;
+        String cdata = jsonResponse.has("cdata") ? jsonResponse.get("cdata").asText() : null;
+        // Cloudflare's device fingerprint; Enterprise-only, so null on every other plan
+        String ephemeralId = jsonResponse.path("metadata").path("ephemeral_id").asText(null);
+        boolean testingKey = jsonResponse.path("metadata").path("result_with_testing_key").asBoolean();
+
+        // Extract error codes if present
+        String errorCodes = null;
+        if (jsonResponse.has("error-codes") && jsonResponse.get("error-codes").isArray()) {
+            List<String> errors = new ArrayList<>();
+            jsonResponse.get("error-codes").forEach(node -> errors.add(node.asText()));
+            errorCodes = String.join(",", errors);
+        }
+
+        if (testingKey) {
+            // Cloudflare's testing secret keys answer from a canned response, which echoes nothing the
+            // widget was rendered with: there is no cdata to compare against. Binding is skipped rather
+            // than failed, and nothing is weakened by it - a testing key accepts (or refuses) every
+            // token on its own, so the verification isn't a real one either way.
+            logger.debugf("Turnstile answered with a testing key for IP %s; session binding not checked", remoteIp);
+        } else if (expectedCdata != null && !expectedCdata.equals(cdata)) {
+            logger.warnf("Turnstile cdata mismatch for IP %s: expected %s, got %s", remoteIp, expectedCdata, cdata);
+            success = false;
+            errorCodes = errorCodes == null ? CDATA_MISMATCH : errorCodes + "," + CDATA_MISMATCH;
+        } else if (expectedCdata == null && cdata != null && !cdata.isEmpty()) {
+            // Anomaly: cdata not sent but received
+            logger.debugf("Turnstile token carried cdata %s but this session has none to check it against", cdata);
+        }
+
+        TurnstileVerificationResult result = new TurnstileVerificationResult(
+                success, errorCodes, challengeTs, hostname, responseBody, cdata, ephemeralId);
+
+        if (success) {
+            logger.infof("Turnstile verification successful for IP: %s, hostname: %s", remoteIp, hostname);
+        } else {
+            logger.warnf("Turnstile verification failed for IP: %s, errors: %s", remoteIp, errorCodes);
+        }
+
+        return result;
     }
 
     /** Cloudflare couldn't be asked about a token, or its answer couldn't be read. */
@@ -160,14 +202,25 @@ public class CloudflareTurnstileService implements Closeable {
         private final String challengeTs;
         private final String hostname;
         private final String rawResponse;
+        private final String cdata;
+        private final String ephemeralId;
+
+        /** A result Keycloak made up itself (allowlisted, fail-open, or an error): Cloudflare said nothing. */
+        public TurnstileVerificationResult(boolean success, String errorCodes, String challengeTs,
+                String hostname, String rawResponse) {
+            this(success, errorCodes, challengeTs, hostname, rawResponse, null, null);
+        }
 
         public TurnstileVerificationResult(boolean success, String errorCodes, String challengeTs,
-                                          String hostname, String rawResponse) {
+                                          String hostname, String rawResponse, String cdata,
+                                          String ephemeralId) {
+            this.ephemeralId = ephemeralId;
             this.success = success;
             this.errorCodes = errorCodes;
             this.challengeTs = challengeTs;
             this.hostname = hostname;
             this.rawResponse = rawResponse;
+            this.cdata = cdata;
         }
 
         public boolean isSuccess() {
@@ -190,10 +243,21 @@ public class CloudflareTurnstileService implements Closeable {
             return rawResponse;
         }
 
+        public String getCdata() {
+            return cdata;
+        }
+
+        /** Cloudflare's device fingerprint, or null: it is an Enterprise-only field. */
+        public String getEphemeralId() {
+            return ephemeralId;
+        }
+
         @Override
         public String toString() {
-            return String.format("TurnstileVerificationResult{success=%s, errorCodes=%s, hostname=%s}",
-                    success, errorCodes, hostname);
+            return String.format(
+                    "TurnstileVerificationResult{success=%s, errorCodes=%s, hostname=%s, cdata=%s, ephemeralId=%s}",
+                    success, errorCodes, hostname, cdata, ephemeralId
+            );
         }
     }
 }

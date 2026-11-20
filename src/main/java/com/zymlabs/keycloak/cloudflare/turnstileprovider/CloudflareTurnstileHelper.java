@@ -1,20 +1,23 @@
 package com.zymlabs.keycloak.cloudflare.turnstileprovider;
 
+import jakarta.persistence.EntityManager;
+import jakarta.ws.rs.core.UriInfo;
 import org.jboss.logging.Logger;
 import org.keycloak.connections.jpa.JpaConnectionProvider;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
+import org.keycloak.sessions.AuthenticationSessionModel;
 
-import jakarta.persistence.EntityManager;
-import jakarta.ws.rs.core.UriInfo;
 import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.net.URLEncoder;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.HexFormat;
 import java.util.Map;
 
@@ -26,6 +29,40 @@ import java.util.Map;
 public class CloudflareTurnstileHelper {
 
     private static final Logger logger = Logger.getLogger(CloudflareTurnstileHelper.class);
+
+    /** Auth note holding the cdata this session's widget was rendered with. */
+    public static final String CDATA_NOTE = "cf-turnstile-cdata";
+
+    private static final SecureRandom RANDOM = new SecureRandom();
+
+    /**
+     * The cdata to render this session's widget with: generated on the first render and kept for the
+     * rest of the authentication session, so a reload or a second attempt reuses it.
+     *
+     * <p>Cloudflare echoes cdata back in the siteverify response, so checking it there ties a solved
+     * token to the session whose widget asked for it. A token solved elsewhere - in a farm, or against
+     * another session's widget - is still a valid token to Cloudflare, but no longer one here.
+     *
+     * <p>Base64url without padding: within Cloudflare's cdata charset (alphanumeric, {@code _} and
+     * {@code -}) and well under its 255-character limit. It is neither secret nor signed; it only has
+     * to be unguessable to whoever is reusing tokens.
+     *
+     * @return the session's cdata, or null when there is no authentication session
+     */
+    public static String sessionCdata(AuthenticationSessionModel authSession) {
+        if (authSession == null) {
+            return null;
+        }
+        String existing = authSession.getAuthNote(CDATA_NOTE);
+        if (existing != null && !existing.isEmpty()) {
+            return existing;
+        }
+        byte[] bytes = new byte[16];
+        RANDOM.nextBytes(bytes);
+        String cdata = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+        authSession.setAuthNote(CDATA_NOTE, cdata);
+        return cdata;
+    }
 
     // ===== EVENT LOGGING METHODS =====
 
@@ -458,11 +495,13 @@ public class CloudflareTurnstileHelper {
      */
     public static String buildConfigJsUrl(UriInfo uriInfo, String realmName, String providerId,
                                            String siteKey, String widgetMode, String widgetTheme) {
-        return buildConfigJsUrl(uriInfo, realmName, providerId, siteKey, widgetMode, widgetTheme, false);
+        return buildConfigJsUrl(uriInfo, realmName, providerId, siteKey, widgetMode, widgetTheme, false, null);
     }
 
     /**
-     * Builds the URL for the Turnstile config.js endpoint with debug logging option.
+     * Builds the URL for the Turnstile config.js endpoint, with debug logging and the session's
+     * cdata for the injected widget. The cdata is neither secret nor signed, so carrying it in the
+     * query string is fine.
      *
      * @param uriInfo the UriInfo from the request context
      * @param realmName the realm name
@@ -471,16 +510,18 @@ public class CloudflareTurnstileHelper {
      * @param widgetMode the widget appearance (always, interaction-only, invisible)
      * @param widgetTheme the widget theme (light, dark, auto)
      * @param enableDebugLogging whether to enable JavaScript console debug logging
+     * @param cdata the session's cdata, from {@link #sessionCdata}; omitted from the URL when null
      * @return the full URL path for config.js
      */
     public static String buildConfigJsUrl(UriInfo uriInfo, String realmName, String providerId,
                                            String siteKey, String widgetMode, String widgetTheme,
-                                           boolean enableDebugLogging) {
+                                           boolean enableDebugLogging, String cdata) {
         String contextPath = getContextPath(uriInfo);
-        return String.format("%s/realms/%s/%s/config.js?siteKey=%s&mode=%s&theme=%s&debug=%s",
+        return String.format("%s/realms/%s/%s/config.js?siteKey=%s&mode=%s&theme=%s&debug=%s%s",
                 contextPath, realmName, providerId,
                 urlEncode(siteKey), urlEncode(widgetMode), urlEncode(widgetTheme),
-                enableDebugLogging ? "true" : "false");
+                enableDebugLogging ? "true" : "false",
+                cdata == null || cdata.isEmpty() ? "" : "&cdata=" + urlEncode(cdata));
     }
 
     /**

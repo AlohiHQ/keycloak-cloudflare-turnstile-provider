@@ -58,6 +58,7 @@
                     <div class="${properties.kcInputWrapperClass!}" style="display: flex; justify-content: center;">
                         <div class="cf-turnstile"
                              data-sitekey="${turnstileSiteKey}"
+                             data-cdata="${turnstileCdata!''}"
                              data-theme="${turnstileTheme!'auto'}"
                              data-size="flexible"
                              data-appearance="${turnstileAppearance!'always'}"

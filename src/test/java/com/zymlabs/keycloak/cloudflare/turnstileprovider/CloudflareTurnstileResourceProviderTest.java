@@ -10,7 +10,7 @@ class CloudflareTurnstileResourceProviderTest {
     @Test
     @DisplayName("config.js sets the widget settings, then tells an injector that ran before it")
     void configScriptAnnouncesItself() {
-        String script = CloudflareTurnstileResourceProvider.configScript("1x00000000000000000000AA", "managed", "dark", "false");
+        String script = CloudflareTurnstileResourceProvider.configScript("1x00000000000000000000AA", "managed", "dark", "false", null);
 
         assertThat(script)
                 .contains("window.TURNSTILE_CONFIG.enabled = true;")
@@ -22,7 +22,7 @@ class CloudflareTurnstileResourceProviderTest {
     @Test
     @DisplayName("config.js falls back to an always-visible widget and automatic theme")
     void configScriptDefaults() {
-        String script = CloudflareTurnstileResourceProvider.configScript("key", " ", null, "true");
+        String script = CloudflareTurnstileResourceProvider.configScript("key", " ", null, "true", null);
 
         assertThat(script)
                 .contains("window.TURNSTILE_CONFIG.mode = \"always\";")
@@ -33,9 +33,9 @@ class CloudflareTurnstileResourceProviderTest {
     @Test
     @DisplayName("config.js gives the injector the current name of a former widget mode")
     void configScriptRenamesFormerModes() {
-        assertThat(CloudflareTurnstileResourceProvider.configScript("key", "non-interactive", "auto", "false"))
+        assertThat(CloudflareTurnstileResourceProvider.configScript("key", "non-interactive", "auto", "false", null))
                 .contains("window.TURNSTILE_CONFIG.mode = \"interaction-only\";");
-        assertThat(CloudflareTurnstileResourceProvider.configScript("key", "managed", "auto", "false"))
+        assertThat(CloudflareTurnstileResourceProvider.configScript("key", "managed", "auto", "false", null))
                 .contains("window.TURNSTILE_CONFIG.mode = \"always\";");
     }
 }

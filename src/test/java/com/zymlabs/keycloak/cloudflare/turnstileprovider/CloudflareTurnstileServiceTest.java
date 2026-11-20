@@ -3,7 +3,8 @@ package com.zymlabs.keycloak.cloudflare.turnstileprovider;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Tests for CloudflareTurnstileService.
@@ -72,7 +73,7 @@ class CloudflareTurnstileServiceTest {
     @DisplayName("Should handle null token")
     void testNullToken() {
         CloudflareTurnstileService service = new CloudflareTurnstileService("test-secret");
-        CloudflareTurnstileService.TurnstileVerificationResult result = service.verify(null, "1.2.3.4");
+        CloudflareTurnstileService.TurnstileVerificationResult result = service.verify(null, "1.2.3.4", null);
 
         assertThat(result).isNotNull();
         assertThat(result.isSuccess()).isFalse();
@@ -88,7 +89,7 @@ class CloudflareTurnstileServiceTest {
     @DisplayName("Should handle empty token")
     void testEmptyToken() {
         CloudflareTurnstileService service = new CloudflareTurnstileService("test-secret");
-        CloudflareTurnstileService.TurnstileVerificationResult result = service.verify("", "1.2.3.4");
+        CloudflareTurnstileService.TurnstileVerificationResult result = service.verify("", "1.2.3.4", null);
 
         assertThat(result).isNotNull();
         assertThat(result.isSuccess()).isFalse();
@@ -101,7 +102,7 @@ class CloudflareTurnstileServiceTest {
     @DisplayName("Should handle whitespace-only token")
     void testWhitespaceToken() {
         CloudflareTurnstileService service = new CloudflareTurnstileService("test-secret");
-        CloudflareTurnstileService.TurnstileVerificationResult result = service.verify("   ", "1.2.3.4");
+        CloudflareTurnstileService.TurnstileVerificationResult result = service.verify("   ", "1.2.3.4", null);
 
         assertThat(result).isNotNull();
         assertThat(result.isSuccess()).isFalse();
@@ -114,7 +115,7 @@ class CloudflareTurnstileServiceTest {
     @DisplayName("Should handle token with only tabs and newlines")
     void testWhitespaceVariationsToken() {
         CloudflareTurnstileService service = new CloudflareTurnstileService("test-secret");
-        CloudflareTurnstileService.TurnstileVerificationResult result = service.verify("\t\n\r", "1.2.3.4");
+        CloudflareTurnstileService.TurnstileVerificationResult result = service.verify("\t\n\r", "1.2.3.4", null);
 
         assertThat(result).isNotNull();
         assertThat(result.isSuccess()).isFalse();
@@ -130,7 +131,7 @@ class CloudflareTurnstileServiceTest {
     void testNullRemoteIp() {
         CloudflareTurnstileService service = new CloudflareTurnstileService("test-secret");
         // Null token to avoid HTTP call, we're just testing parameter handling
-        CloudflareTurnstileService.TurnstileVerificationResult result = service.verify(null, null);
+        CloudflareTurnstileService.TurnstileVerificationResult result = service.verify(null, null, null);
 
         assertThat(result).isNotNull();
         assertThat(result.isSuccess()).isFalse();
@@ -144,7 +145,7 @@ class CloudflareTurnstileServiceTest {
     void testEmptyRemoteIp() {
         CloudflareTurnstileService service = new CloudflareTurnstileService("test-secret");
         // Null token to avoid HTTP call, we're just testing parameter handling
-        CloudflareTurnstileService.TurnstileVerificationResult result = service.verify(null, "");
+        CloudflareTurnstileService.TurnstileVerificationResult result = service.verify(null, "", null);
 
         assertThat(result).isNotNull();
         assertThat(result.isSuccess()).isFalse();
@@ -157,7 +158,7 @@ class CloudflareTurnstileServiceTest {
     void testWhitespaceRemoteIp() {
         CloudflareTurnstileService service = new CloudflareTurnstileService("test-secret");
         // Null token to avoid HTTP call, we're just testing parameter handling
-        CloudflareTurnstileService.TurnstileVerificationResult result = service.verify(null, "   ");
+        CloudflareTurnstileService.TurnstileVerificationResult result = service.verify(null, "   ", null);
 
         assertThat(result).isNotNull();
         assertThat(result.isSuccess()).isFalse();
@@ -184,9 +185,9 @@ class CloudflareTurnstileServiceTest {
         CloudflareTurnstileService service = new CloudflareTurnstileService("test-secret");
 
         // Multiple calls with null token (avoids HTTP calls)
-        CloudflareTurnstileService.TurnstileVerificationResult result1 = service.verify(null, "1.2.3.4");
-        CloudflareTurnstileService.TurnstileVerificationResult result2 = service.verify("", "1.2.3.4");
-        CloudflareTurnstileService.TurnstileVerificationResult result3 = service.verify("   ", "1.2.3.4");
+        CloudflareTurnstileService.TurnstileVerificationResult result1 = service.verify(null, "1.2.3.4", null);
+        CloudflareTurnstileService.TurnstileVerificationResult result2 = service.verify("", "1.2.3.4", null);
+        CloudflareTurnstileService.TurnstileVerificationResult result3 = service.verify("   ", "1.2.3.4", null);
 
         assertThat(result1.isSuccess()).isFalse();
         assertThat(result2.isSuccess()).isFalse();
@@ -275,7 +276,7 @@ class CloudflareTurnstileServiceTest {
     void verifyThrowsWhenCloudflareIsUnreachable() {
         // Nothing can connect within a millisecond: an outage as far as the service can tell
         try (CloudflareTurnstileService service = new CloudflareTurnstileService("secret", 1, 1)) {
-            assertThatThrownBy(() -> service.verify("token", "1.2.3.4"))
+            assertThatThrownBy(() -> service.verify("token", "1.2.3.4", null))
                     .isInstanceOf(CloudflareTurnstileService.UnavailableException.class);
         }
     }
@@ -314,5 +315,106 @@ class CloudflareTurnstileServiceTest {
         String str = result.toString();
         assertThat(str).contains("success=true");
         // Should not throw NPE with null fields
+    }
+
+    // ===== SESSION BINDING (CDATA) TESTS =====
+
+    private static final String ACCEPTED = "{\"success\":true,\"hostname\":\"id.example.com\",\"cdata\":\"%s\"}";
+
+    /** Cloudflare's answer, read as if it had just come back from siteverify. */
+    private static CloudflareTurnstileService.TurnstileVerificationResult read(String body, String expectedCdata) {
+        try (CloudflareTurnstileService service = new CloudflareTurnstileService("secret")) {
+            return service.readResponse(body, expectedCdata, "1.2.3.4");
+        } catch (java.io.IOException e) {
+            throw new AssertionError("test response should parse", e);
+        }
+    }
+
+    @Test
+    @DisplayName("A token solved by this session's widget is accepted")
+    void cdataMatchingTheSessionIsAccepted() {
+        var result = read(String.format(ACCEPTED, "session-A"), "session-A");
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getErrorCodes()).isNull();
+        assertThat(result.getCdata()).isEqualTo("session-A");
+    }
+
+    @Test
+    @DisplayName("A token Cloudflare accepted but solved for another session is refused")
+    void cdataFromAnotherSessionIsRefused() {
+        var result = read(String.format(ACCEPTED, "session-B"), "session-A");
+
+        // Cloudflare said yes; it is this check alone that turns it down
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getErrorCodes()).isEqualTo(CloudflareTurnstileService.CDATA_MISMATCH);
+    }
+
+    @Test
+    @DisplayName("A token carrying no cdata is refused when this session expects one")
+    void missingCdataIsRefusedWhenOneIsExpected() {
+        // What a theme that drops data-cdata produces, and an empty value is the same answer
+        assertThat(read("{\"success\":true}", "session-A").isSuccess()).isFalse();
+        assertThat(read(String.format(ACCEPTED, ""), "session-A").isSuccess()).isFalse();
+    }
+
+    @Test
+    @DisplayName("A cdata we never asked for is left alone")
+    void cdataIsNotCheckedWhenNoneWasExpected() {
+        // cData is Cloudflare's field, not ours: a flow that minted nothing has no business refusing
+        // someone else's value, and whoever reuses tokens would simply send none.
+        var result = read(String.format(ACCEPTED, "someone-elses-value"), null);
+
+        assertThat(result.isSuccess()).isTrue();
+        assertThat(result.getErrorCodes()).isNull();
+        assertThat(result.getCdata()).isEqualTo("someone-elses-value");
+    }
+
+    @Test
+    @DisplayName("A cdata mismatch is reported alongside Cloudflare's own error codes")
+    void cdataMismatchJoinsCloudflaresErrorCodes() {
+        var result = read("{\"success\":false,\"error-codes\":[\"timeout-or-duplicate\"],\"cdata\":\"session-B\"}",
+                "session-A");
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getErrorCodes())
+                .isEqualTo("timeout-or-duplicate," + CloudflareTurnstileService.CDATA_MISMATCH);
+    }
+
+    @Test
+    @DisplayName("A failed check stays failed when its cdata matches")
+    void matchingCdataDoesNotRescueAFailedCheck() {
+        var result = read("{\"success\":false,\"error-codes\":[\"invalid-input-response\"],\"cdata\":\"session-A\"}",
+                "session-A");
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getErrorCodes()).isEqualTo("invalid-input-response");
+    }
+
+    @Test
+    @DisplayName("Cloudflare's testing keys are not held to the session binding")
+    void testingKeysAreNotBound() {
+        // Verbatim from siteverify with the testing secret key 1x0000000000000000000000000000000AA:
+        // a canned answer that echoes no cdata, whatever the widget was rendered with. Refusing it
+        // would lock out every realm on the testing keys, which is what the e2e suite and the docs
+        // screenshots run on, and what Cloudflare's own Testing page tells people to develop against.
+        var result = read("{\"challenge_ts\":\"2026-11-20T14:59:26.689Z\",\"error-codes\":[],"
+                + "\"hostname\":\"example.com\",\"metadata\":{\"result_with_testing_key\":true},"
+                + "\"success\":true}", "session-A");
+
+        assertThat(result.isSuccess()).isTrue();
+        // Cloudflare sends an empty array here, which this parser reads as an empty string, not null
+        assertThat(result.getErrorCodes()).isNullOrEmpty();
+    }
+
+    @Test
+    @DisplayName("A real key's answer is still bound when it carries other metadata")
+    void metadataAloneDoesNotSkipTheBindingCheck() {
+        // Only the testing-key flag skips the check: an Enterprise answer carries a metadata object too
+        var result = read("{\"success\":true,\"metadata\":{\"ephemeral_id\":\"x:9f78e0ed\"}}", "session-A");
+
+        assertThat(result.isSuccess()).isFalse();
+        assertThat(result.getErrorCodes()).isEqualTo(CloudflareTurnstileService.CDATA_MISMATCH);
+        assertThat(result.getEphemeralId()).isEqualTo("x:9f78e0ed");
     }
 }

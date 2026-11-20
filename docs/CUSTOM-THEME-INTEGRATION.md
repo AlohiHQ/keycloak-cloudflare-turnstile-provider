@@ -99,6 +99,7 @@ cat theme/cloudflare-turnstile/login/register.ftl
         <div class="${properties.kcInputWrapperClass!}" style="display: flex; justify-content: center;">
             <div class="cf-turnstile"
                  data-sitekey="${turnstileSiteKey}"
+                 data-cdata="${turnstileCdata!''}"
                  data-theme="${turnstileTheme!'auto'}"
                  data-size="flexible"
                  data-appearance="${turnstileAppearance!'always'}"
@@ -133,6 +134,7 @@ cat theme/cloudflare-turnstile/login/register.ftl
             <div class="${properties.kcInputWrapperClass!}" style="display: flex; justify-content: center;">
                 <div class="cf-turnstile"
                      data-sitekey="${turnstileSiteKey}"
+                     data-cdata="${turnstileCdata!''}"
                      data-theme="${turnstileTheme!'auto'}"
                      data-size="flexible"
                      data-appearance="${turnstileAppearance!'always'}"
@@ -166,6 +168,7 @@ cat theme/cloudflare-turnstile/login/register.ftl
         <div class="${properties.kcInputWrapperClass!}" style="display: flex; justify-content: center;">
             <div class="cf-turnstile"
                  data-sitekey="${turnstileSiteKey}"
+                 data-cdata="${turnstileCdata!''}"
                  data-theme="${turnstileTheme!'auto'}"
                  data-size="flexible"
                  data-appearance="${turnstileAppearance!'always'}"
@@ -213,6 +216,7 @@ cat theme/cloudflare-turnstile/login/register.ftl
             <div class="${properties.kcInputWrapperClass!}" style="display: flex; justify-content: center;">
                 <div class="cf-turnstile"
                      data-sitekey="${turnstileSiteKey}"
+                     data-cdata="${turnstileCdata!''}"
                      data-theme="${turnstileTheme!'auto'}"
                      data-size="flexible"
                      data-appearance="${turnstileAppearance!'always'}"
@@ -264,6 +268,7 @@ cat theme/cloudflare-turnstile/login/register.ftl
         <div class="${properties.kcInputWrapperClass!}">
             <div class="cf-turnstile"
                  data-sitekey="${turnstileSiteKey}"
+                 data-cdata="${turnstileCdata!''}"
                  data-theme="${turnstileTheme!'auto'}"
                  data-size="flexible"
                  data-appearance="${turnstileAppearance!'always'}"
@@ -313,6 +318,7 @@ cat theme/cloudflare-turnstile/login/register.ftl
             <div class="${properties.kcInputWrapperClass!}">
                 <div class="cf-turnstile"
                      data-sitekey="${turnstileSiteKey}"
+                     data-cdata="${turnstileCdata!''}"
                      data-theme="${turnstileTheme!'auto'}"
                      data-size="flexible"
                      data-appearance="${turnstileAppearance!'always'}"
@@ -349,6 +355,7 @@ The Cloudflare Turnstile authenticator provides these variables to your template
 | `turnstileRequired` | Boolean | Whether Turnstile verification is required | `true`, `false` |
 | `turnstileSkipped` | Boolean | Whether verification was skipped (allowlisted IP) | `true`, `false` |
 | `turnstileSiteKey` | String | Your Cloudflare site key | `"1x00000000000000000000AA"` |
+| `turnstileCdata` | String | This login attempt's session binding. **Must be rendered as `data-cdata`** — see [Session binding](#session-binding-required) | `"k3Jd9f_qR2bNwXy1AbCdEf"` |
 | `turnstileTheme` | String | Widget theme | `"light"`, `"dark"`, `"auto"` |
 | `turnstileAppearance` | String | Cloudflare's `appearance` for the widget, from the Widget Appearance setting (`interaction-only` for `invisible`) | `"always"`, `"interaction-only"` |
 | `turnstileInvisible` | Boolean | Widget Appearance is `invisible`: the site key is in Cloudflare's Invisible mode, so don't hold back the submit button | `true`, `false` |
@@ -369,9 +376,46 @@ The Turnstile widget supports these Cloudflare data attributes:
 | Attribute | Description | Possible Values |
 |-----------|-------------|-----------------|
 | `data-sitekey` | Your site key (required) | From config |
+| `data-cdata` | Session binding (required) | `${turnstileCdata!''}` |
 | `data-theme` | Visual theme | `light`, `dark`, `auto` |
 | `data-size` | Widget size | `normal`, `flexible`, `compact` |
 | `data-appearance` | When the widget is visible | `always`, `execute`, `interaction-only` |
+
+### Session binding (required)
+
+The server generates a random `turnstileCdata` for each authentication session and remembers it.
+Cloudflare echoes a widget's `data-cdata` back in the siteverify response, so when the token comes
+back the server can tell whether it was solved by *this* session's widget. A token solved somewhere
+else — in a token farm, or against another user's page — is still valid to Cloudflare, but is
+refused here with the error code `keycloak-cdata-mismatch`.
+
+**Your template must pass it through.** If the server generated a cdata and your widget renders
+without one, every verification fails and nobody can sign in:
+
+```html
+<div class="cf-turnstile"
+     data-sitekey="${turnstileSiteKey}"
+     data-cdata="${turnstileCdata!''}"
+     data-theme="${turnstileTheme!'auto'}"></div>
+```
+
+Keep the `!''` default, and don't read it as an opt-out. It is there for *older* versions of this
+provider, which don't set the variable at all: a bare `${turnstileCdata}` would raise an error and
+the page would fail to render, so the default is what lets one template serve both. Cloudflare
+accepts an empty cData (it validates against `/^[a-z0-9_-]{0,255}$/i`), and a version that doesn't
+set the variable also doesn't check it. Against this version the server always has a value to
+compare against, so a widget that leaves `data-cdata` off is refused every time.
+
+If the injector builds the widget for you (SCRIPT_INJECTION), it picks the cdata up from `config.js`
+and you don't need to do anything. A theme that renders its own hidden-field markers and lets the
+injector build the widget should add `<input type="hidden" name="turnstile-cdata" value="${turnstileCdata!''}">`
+alongside them.
+
+> **Cloudflare's testing keys can't tell you whether you got this right.** They answer from a canned
+> response that echoes no cdata at all, so the server skips the binding check against them (otherwise
+> every realm on the testing keys would refuse every sign-in). A theme that drops `data-cdata` passes
+> every test on `1x00000000000000000000AA` and locks the realm out on the real key. Check the rendered
+> HTML for the attribute, not just that the sign-in works.
 
 Cloudflare's widget mode (Managed, Non-Interactive, Invisible) comes from the site key, not from an
 attribute. Don't use `data-size="invisible"`: Cloudflare throws `Invalid value for parameter "size"` when it
@@ -620,7 +664,7 @@ Show widget only for specific realms:
    ```ftl
    <!-- Simplified version for testing -->
    <div style="text-align: center; margin: 20px 0;">
-       <div class="cf-turnstile" data-sitekey="${turnstileSiteKey}"></div>
+       <div class="cf-turnstile" data-sitekey="${turnstileSiteKey}" data-cdata="${turnstileCdata!''}"></div>
    </div>
    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
    ```
@@ -780,6 +824,7 @@ parent=keycloak.v2
                     <div class="${properties.kcInputWrapperClass!}" style="display: flex; justify-content: center;">
                         <div class="cf-turnstile"
                              data-sitekey="${turnstileSiteKey}"
+                             data-cdata="${turnstileCdata!''}"
                              data-theme="${turnstileTheme!'auto'}"
                              data-size="flexible"
                              data-appearance="${turnstileAppearance!'always'}"

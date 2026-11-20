@@ -1,18 +1,19 @@
 package com.zymlabs.keycloak.cloudflare.turnstileprovider;
 
-import org.junit.jupiter.api.Test;
+import jakarta.persistence.EntityManager;
+import jakarta.ws.rs.core.UriInfo;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 import org.keycloak.events.EventBuilder;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
 import org.keycloak.models.UserModel;
 
-import jakarta.persistence.EntityManager;
-import jakarta.ws.rs.core.UriInfo;
 import java.net.URI;
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.Mockito.*;
 
 /**
@@ -584,7 +585,7 @@ class CloudflareTurnstileHelperTest {
         when(uriInfo.getBaseUri()).thenReturn(new URI("http://localhost:8080/"));
 
         String url = CloudflareTurnstileHelper.buildConfigJsUrl(
-                uriInfo, "myrealm", "cloudflare-turnstile", "sitekey123", "managed", "auto");
+                uriInfo, "myrealm", "cloudflare-turnstile", "sitekey123", "managed", "auto", false, null);
 
         assertThat(url).isEqualTo("/realms/myrealm/cloudflare-turnstile/config.js?siteKey=sitekey123&mode=managed&theme=auto&debug=false");
     }
@@ -596,7 +597,7 @@ class CloudflareTurnstileHelperTest {
         when(uriInfo.getBaseUri()).thenReturn(new URI("http://localhost:8080/auth/"));
 
         String url = CloudflareTurnstileHelper.buildConfigJsUrl(
-                uriInfo, "myrealm", "cloudflare-turnstile", "sitekey123", "managed", "auto");
+                uriInfo, "myrealm", "cloudflare-turnstile", "sitekey123", "managed", "auto", false, null);
 
         assertThat(url).isEqualTo("/auth/realms/myrealm/cloudflare-turnstile/config.js?siteKey=sitekey123&mode=managed&theme=auto&debug=false");
     }
@@ -608,7 +609,7 @@ class CloudflareTurnstileHelperTest {
         when(uriInfo.getBaseUri()).thenReturn(new URI("http://localhost:8080/"));
 
         String url = CloudflareTurnstileHelper.buildConfigJsUrl(
-                uriInfo, "my-realm", "cloudflare-turnstile", "key with space", "managed", "auto");
+                uriInfo, "my-realm", "cloudflare-turnstile", "key with space", "managed", "auto", false, null);
 
         assertThat(url).contains("siteKey=key+with+space");
     }
@@ -617,7 +618,7 @@ class CloudflareTurnstileHelperTest {
     @DisplayName("buildConfigJsUrl should handle null UriInfo")
     void testBuildConfigJsUrl_NullUriInfo() {
         String url = CloudflareTurnstileHelper.buildConfigJsUrl(
-                null, "myrealm", "cloudflare-turnstile", "sitekey123", "managed", "auto");
+                null, "myrealm", "cloudflare-turnstile", "sitekey123", "managed", "auto", false, null);
 
         assertThat(url).isEqualTo("/realms/myrealm/cloudflare-turnstile/config.js?siteKey=sitekey123&mode=managed&theme=auto&debug=false");
     }
@@ -629,7 +630,7 @@ class CloudflareTurnstileHelperTest {
         when(uriInfo.getBaseUri()).thenReturn(new URI("http://localhost:8080/"));
 
         String url = CloudflareTurnstileHelper.buildConfigJsUrl(
-                uriInfo, "myrealm", "cloudflare-turnstile", "sitekey123", "managed", "auto", true);
+                uriInfo, "myrealm", "cloudflare-turnstile", "sitekey123", "managed", "auto", true, null);
 
         assertThat(url).isEqualTo("/realms/myrealm/cloudflare-turnstile/config.js?siteKey=sitekey123&mode=managed&theme=auto&debug=true");
     }
@@ -641,7 +642,7 @@ class CloudflareTurnstileHelperTest {
         when(uriInfo.getBaseUri()).thenReturn(new URI("http://localhost:8080/"));
 
         String url = CloudflareTurnstileHelper.buildConfigJsUrl(
-                uriInfo, "myrealm", "cloudflare-turnstile", "sitekey123", "managed", "auto", false);
+                uriInfo, "myrealm", "cloudflare-turnstile", "sitekey123", "managed", "auto", false, null);
 
         assertThat(url).isEqualTo("/realms/myrealm/cloudflare-turnstile/config.js?siteKey=sitekey123&mode=managed&theme=auto&debug=false");
     }

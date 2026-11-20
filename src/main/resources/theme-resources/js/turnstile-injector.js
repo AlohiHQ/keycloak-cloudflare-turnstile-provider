@@ -151,6 +151,22 @@
     }
 
     /**
+     * This session's cdata: set by config.js, or carried in a hidden field by a theme that renders
+     * the form itself. Kept apart from the widget settings: those are the same for every user, this
+     * is state for one login attempt, and it applies whichever way the settings were found.
+     *
+     * The server checks it against the session's own value, so a widget that renders without one
+     * where the server minted one will be refused: a theme must pass it through.
+     */
+    function sessionCdata(form) {
+        if (window.TURNSTILE_SESSION && window.TURNSTILE_SESSION.cdata) {
+            return window.TURNSTILE_SESSION.cdata;
+        }
+        var field = form && form.querySelector('input[name="turnstile-cdata"]');
+        return field && field.value ? field.value : null;
+    }
+
+    /**
      * Extract Turnstile configuration from hidden fields
      */
     function getTurnstileConfig(form) {
@@ -160,7 +176,8 @@
             return {
                 siteKey: window.TURNSTILE_CONFIG.siteKey,
                 mode: widgetAppearance(window.TURNSTILE_CONFIG.mode),
-                theme: window.TURNSTILE_CONFIG.theme || 'auto'
+                theme: window.TURNSTILE_CONFIG.theme || 'auto',
+                cdata: sessionCdata(form)
             };
         }
 
@@ -177,7 +194,8 @@
         var config = {
             siteKey: siteKey.value,
             mode: widgetAppearance(mode ? mode.value : ''),
-            theme: theme ? theme.value : 'auto'
+            theme: theme ? theme.value : 'auto',
+            cdata: sessionCdata(form)
         };
 
         logger.log('[Turnstile] Config extracted from hidden fields:', config);
@@ -324,6 +342,10 @@
         container.style.width = '100%';
         container.setAttribute('data-turnstile-injected', 'true');
         container.setAttribute('data-sitekey', config.siteKey);
+        if (config.cdata) {
+            // Echoed back by siteverify, which is where it is checked against this session's value
+            container.setAttribute('data-cdata', config.cdata);
+        }
         container.setAttribute('data-theme', config.theme);
         // Cloudflare's own mode comes from the site key; a size of 'invisible' throws for other modes
         container.setAttribute('data-size', 'flexible');

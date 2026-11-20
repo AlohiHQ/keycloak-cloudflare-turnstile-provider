@@ -16,6 +16,7 @@
                 <div class="turnstile-container" style="width: 100%; display: flex; justify-content: center; align-items: center; margin-bottom: 20px; min-height: 100px;">
                     <div id="turnstile-widget" class="cf-turnstile" style="width: 100%; max-width: 400px;"
                          data-sitekey="${turnstileSiteKey}"
+                         data-cdata="${turnstileCdata!''}"
                          data-theme="${turnstileTheme}"
                          data-size="flexible"
                          data-appearance="${turnstileAppearance!'always'}"

@@ -1,17 +1,13 @@
 package com.zymlabs.keycloak.cloudflare.turnstileprovider;
 
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 import org.keycloak.authentication.AuthenticationFlowContext;
-import org.keycloak.authentication.FormContext;
-import org.keycloak.authentication.ValidationContext;
-import org.keycloak.connections.httpclient.HttpClientProvider;
 import org.keycloak.models.AuthenticatorConfigModel;
-import org.keycloak.models.KeycloakSession;
 
 import java.util.Map;
 
-import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.*;
 
 /**
@@ -162,14 +158,14 @@ class CloudflareTurnstileValidatorTest {
 
         CloudflareTurnstileValidator.ValidationResult result =
                 CloudflareTurnstileValidator.validateTurnstile(
-                        "test-token", "203.0.113.100", config, service);
+                        "test-token", "203.0.113.100", config, service, null);
 
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getErrorCode()).isEqualTo("ip_blocked");
         assertThat(result.getErrorMessage()).isEqualTo("turnstileIpBlocked");
 
         // Service should not be called for blocked IPs
-        verify(service, never()).verify(anyString(), anyString());
+        verify(service, never()).verify(anyString(), anyString(), any());
     }
 
     @Test
@@ -182,7 +178,7 @@ class CloudflareTurnstileValidatorTest {
 
         CloudflareTurnstileValidator.ValidationResult result =
                 CloudflareTurnstileValidator.validateTurnstile(
-                        "test-token", "192.168.1.100", config, service);
+                        "test-token", "192.168.1.100", config, service, null);
 
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getVerificationResult()).isNotNull();
@@ -190,7 +186,7 @@ class CloudflareTurnstileValidatorTest {
         assertThat(result.getVerificationResult().getRawResponse()).contains("allowlist");
 
         // Service should not be called for allowlisted IPs with SKIP_VERIFICATION
-        verify(service, never()).verify(anyString(), anyString());
+        verify(service, never()).verify(anyString(), anyString(), any());
     }
 
     @Test
@@ -198,7 +194,7 @@ class CloudflareTurnstileValidatorTest {
     void testValidateTurnstile_IpAllowlisted_VerifyButAllow_Success() throws Exception {
         CloudflareTurnstileService service = mock(CloudflareTurnstileService.class);
         CloudflareTurnstileService.TurnstileVerificationResult successResult = TestUtils.successResult();
-        when(service.verify("test-token", "192.168.1.100")).thenReturn(successResult);
+        when(service.verify(eq("test-token"), eq("192.168.1.100"), any())).thenReturn(successResult);
 
         Map<String, String> config = TestUtils.configWith(Map.of(
                 CloudflareTurnstileAuthenticator.CONFIG_IP_ALLOWLIST, "192.168.1.0/24",
@@ -206,14 +202,14 @@ class CloudflareTurnstileValidatorTest {
 
         CloudflareTurnstileValidator.ValidationResult result =
                 CloudflareTurnstileValidator.validateTurnstile(
-                        "test-token", "192.168.1.100", config, service);
+                        "test-token", "192.168.1.100", config, service, null);
 
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getVerificationResult()).isEqualTo(successResult);
         assertThat(result.getVerificationResult().getRawResponse()).doesNotContain("allowlist");
 
         // Service SHOULD be called for allowlisted IPs with VERIFY_BUT_ALLOW
-        verify(service).verify("test-token", "192.168.1.100");
+        verify(service).verify(eq("test-token"), eq("192.168.1.100"), any());
     }
 
     @Test
@@ -221,7 +217,7 @@ class CloudflareTurnstileValidatorTest {
     void testValidateTurnstile_IpAllowlisted_VerifyButAllow_Failure() throws Exception {
         CloudflareTurnstileService service = mock(CloudflareTurnstileService.class);
         CloudflareTurnstileService.TurnstileVerificationResult failureResult = TestUtils.failureResult();
-        when(service.verify("test-token", "192.168.1.100")).thenReturn(failureResult);
+        when(service.verify(eq("test-token"), eq("192.168.1.100"), any())).thenReturn(failureResult);
 
         Map<String, String> config = TestUtils.configWith(Map.of(
                 CloudflareTurnstileAuthenticator.CONFIG_IP_ALLOWLIST, "192.168.1.0/24",
@@ -229,7 +225,7 @@ class CloudflareTurnstileValidatorTest {
 
         CloudflareTurnstileValidator.ValidationResult result =
                 CloudflareTurnstileValidator.validateTurnstile(
-                        "test-token", "192.168.1.100", config, service);
+                        "test-token", "192.168.1.100", config, service, null);
 
         // Should fail based on actual Cloudflare response
         assertThat(result.isSuccess()).isFalse();
@@ -237,7 +233,7 @@ class CloudflareTurnstileValidatorTest {
         assertThat(result.getErrorMessage()).isEqualTo("turnstileVerificationFailed");
 
         // Service SHOULD be called for allowlisted IPs with VERIFY_BUT_ALLOW
-        verify(service).verify("test-token", "192.168.1.100");
+        verify(service).verify(eq("test-token"), eq("192.168.1.100"), any());
     }
 
     @Test
@@ -245,18 +241,18 @@ class CloudflareTurnstileValidatorTest {
     void testValidateTurnstile_VerificationSuccess() throws Exception {
         CloudflareTurnstileService service = mock(CloudflareTurnstileService.class);
         CloudflareTurnstileService.TurnstileVerificationResult successResult = TestUtils.successResult();
-        when(service.verify("test-token", "8.8.8.8")).thenReturn(successResult);
+        when(service.verify(eq("test-token"), eq("8.8.8.8"), any())).thenReturn(successResult);
 
         Map<String, String> config = TestUtils.defaultConfig();
 
         CloudflareTurnstileValidator.ValidationResult result =
                 CloudflareTurnstileValidator.validateTurnstile(
-                        "test-token", "8.8.8.8", config, service);
+                        "test-token", "8.8.8.8", config, service, null);
 
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getVerificationResult()).isEqualTo(successResult);
 
-        verify(service).verify("test-token", "8.8.8.8");
+        verify(service).verify(eq("test-token"), eq("8.8.8.8"), any());
     }
 
     @Test
@@ -264,26 +260,26 @@ class CloudflareTurnstileValidatorTest {
     void testValidateTurnstile_VerificationFailure() throws Exception {
         CloudflareTurnstileService service = mock(CloudflareTurnstileService.class);
         CloudflareTurnstileService.TurnstileVerificationResult failureResult = TestUtils.failureResult();
-        when(service.verify("test-token", "8.8.8.8")).thenReturn(failureResult);
+        when(service.verify(eq("test-token"), eq("8.8.8.8"), any())).thenReturn(failureResult);
 
         Map<String, String> config = TestUtils.defaultConfig();
 
         CloudflareTurnstileValidator.ValidationResult result =
                 CloudflareTurnstileValidator.validateTurnstile(
-                        "test-token", "8.8.8.8", config, service);
+                        "test-token", "8.8.8.8", config, service, null);
 
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getErrorCode()).isEqualTo("verification_failed");
         assertThat(result.getErrorMessage()).isEqualTo("turnstileVerificationFailed");
 
-        verify(service).verify("test-token", "8.8.8.8");
+        verify(service).verify(eq("test-token"), eq("8.8.8.8"), any());
     }
 
     @Test
     @DisplayName("validateTurnstile should allow on exception with FAIL_OPEN")
     void testValidateTurnstile_ServiceException_FailOpen() throws Exception {
         CloudflareTurnstileService service = mock(CloudflareTurnstileService.class);
-        when(service.verify(anyString(), anyString()))
+        when(service.verify(anyString(), anyString(), any()))
                 .thenThrow(new RuntimeException("Network error"));
 
         Map<String, String> config = TestUtils.configWith(
@@ -291,7 +287,7 @@ class CloudflareTurnstileValidatorTest {
 
         CloudflareTurnstileValidator.ValidationResult result =
                 CloudflareTurnstileValidator.validateTurnstile(
-                        "test-token", "8.8.8.8", config, service);
+                        "test-token", "8.8.8.8", config, service, null);
 
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getVerificationResult()).isNotNull();
@@ -303,7 +299,7 @@ class CloudflareTurnstileValidatorTest {
     @DisplayName("validateTurnstile should block on exception with FAIL_CLOSED")
     void testValidateTurnstile_ServiceException_FailClosed() throws Exception {
         CloudflareTurnstileService service = mock(CloudflareTurnstileService.class);
-        when(service.verify(anyString(), anyString()))
+        when(service.verify(anyString(), anyString(), any()))
                 .thenThrow(new RuntimeException("Network error"));
 
         Map<String, String> config = TestUtils.configWith(
@@ -311,7 +307,7 @@ class CloudflareTurnstileValidatorTest {
 
         CloudflareTurnstileValidator.ValidationResult result =
                 CloudflareTurnstileValidator.validateTurnstile(
-                        "test-token", "8.8.8.8", config, service);
+                        "test-token", "8.8.8.8", config, service, null);
 
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getErrorCode()).isEqualTo("verification_error");
@@ -322,14 +318,14 @@ class CloudflareTurnstileValidatorTest {
     @DisplayName("validateTurnstile should use default fail mode when not configured")
     void testValidateTurnstile_DefaultFailMode() throws Exception {
         CloudflareTurnstileService service = mock(CloudflareTurnstileService.class);
-        when(service.verify(anyString(), anyString()))
+        when(service.verify(anyString(), anyString(), any()))
                 .thenThrow(new RuntimeException("Network error"));
 
         Map<String, String> config = TestUtils.emptyConfig();
 
         CloudflareTurnstileValidator.ValidationResult result =
                 CloudflareTurnstileValidator.validateTurnstile(
-                        "test-token", "8.8.8.8", config, service);
+                        "test-token", "8.8.8.8", config, service, null);
 
         // Default is FAIL_CLOSED
         assertThat(result.isSuccess()).isFalse();
@@ -347,12 +343,12 @@ class CloudflareTurnstileValidatorTest {
         // 192.168.1.1 is in 192.168.0.0/16
         CloudflareTurnstileValidator.ValidationResult result =
                 CloudflareTurnstileValidator.validateTurnstile(
-                        "test-token", "192.168.1.1", config, service);
+                        "test-token", "192.168.1.1", config, service, null);
 
         assertThat(result.isSuccess()).isTrue();
         assertThat(result.getVerificationResult().getRawResponse()).contains("allowlist");
 
-        verify(service, never()).verify(anyString(), anyString());
+        verify(service, never()).verify(anyString(), anyString(), any());
     }
 
     // ===== CONTEXT HELPER TESTS =====

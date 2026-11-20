@@ -90,6 +90,28 @@ render with JavaScript add both scripts themselves, in any order, and render the
 settings and the form (MutationObserver, 30 s), renders the widget explicitly into a container inside the form, puts it
 back after a re-render, and only enables a submit button it disabled itself.
 
+### Session binding (cdata)
+
+`CloudflareTurnstileHelper.sessionCdata()` mints a random cdata on the first render and keeps it as the auth note
+`cf-turnstile-cdata`; `verify()` refuses a token whose echoed cdata isn't it, with `keycloak-cdata-mismatch`. The
+invariant: **every path that renders a widget must deliver the cdata to it.** The server minting one that the widget
+doesn't carry fails every verification closed — a login page that locks everyone out, not a weakened check. So a
+`setAttribute("turnstileSiteKey", …)` without a `turnstileCdata` beside it, or a `data-sitekey` in a template without a
+`data-cdata`, is a bug; they're one-to-one today. Third-party themes are held to the same contract, in
+`docs/CUSTOM-THEME-INTEGRATION.md`. The note is only ever *read* at validation, never written there.
+
+Cloudflare's testing secret keys (`1x…AA`, `2x…AA`) answer from a canned response that echoes no cdata, so the check
+is skipped when the answer carries `metadata.result_with_testing_key`. Without that, the e2e suite, the docs
+screenshots and every staging realm on the testing keys would refuse every sign-in. It weakens nothing — a testing
+key accepts or refuses every token on its own — but it does mean **the binding is untestable end to end**: no e2e
+can prove a template carries the cdata, only that the attribute is rendered.
+
+`config.js` also sets `window.TURNSTILE_SESSION.cdata`, this login attempt's cdata, which the injector renders as the
+widget's `data-cdata`. It is kept out of `window.TURNSTILE_CONFIG` on purpose: the settings there are the same for every
+user, this is one session's state, and it applies whichever way the injector found its settings. **`config.js` must stay
+uncacheable** (`no-store`, and the cdata is in its URL): a shared response hands one user's cdata to another, whose own
+is in their authentication session, so every verification mismatches and the login page locks everyone out.
+
 ### Realm settings
 
 `CloudflareTurnstileRealmSettings.effective()` merges the realm tab with a step's configuration. A

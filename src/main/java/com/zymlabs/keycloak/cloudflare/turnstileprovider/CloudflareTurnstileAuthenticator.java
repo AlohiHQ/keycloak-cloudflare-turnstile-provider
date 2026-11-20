@@ -189,7 +189,8 @@ public class CloudflareTurnstileAuthenticator extends AbstractUsernameFormAuthen
         form.addScript(CloudflareTurnstileHelper.buildConfigJsUrl(context.getUriInfo(), realmName, providerId,
                 configMap.get(CONFIG_SITE_KEY), WidgetAppearance.fromConfig(configMap.get(CONFIG_WIDGET_APPEARANCE)).value(),
                 configMap.getOrDefault(CONFIG_WIDGET_THEME, "auto"),
-                Boolean.parseBoolean(configMap.getOrDefault(CONFIG_ENABLE_DEBUG_LOGGING, "false"))));
+                Boolean.parseBoolean(configMap.getOrDefault(CONFIG_ENABLE_DEBUG_LOGGING, "false")),
+                CloudflareTurnstileHelper.sessionCdata(context.getAuthenticationSession())));
         form.addScript(CloudflareTurnstileHelper.buildInjectorJsUrl(context.getUriInfo(), realmName, providerId));
     }
 
@@ -205,6 +206,7 @@ public class CloudflareTurnstileAuthenticator extends AbstractUsernameFormAuthen
         widgetAppearance.setAttributes(form);
         Response challenge = form
                 .setAttribute("turnstileSiteKey", siteKey)
+                .setAttribute("turnstileCdata", CloudflareTurnstileHelper.sessionCdata(context.getAuthenticationSession()))
                 .setAttribute("turnstileTheme", widgetTheme)
                 .setAttribute("isRegistrationFlow", isRegistrationFlow)
                 .setAttribute("isResetFlow", isResetCredentialsFlow(context))
@@ -243,6 +245,7 @@ public class CloudflareTurnstileAuthenticator extends AbstractUsernameFormAuthen
             form.setAttribute("turnstileRequired", true)
                     .setAttribute("turnstileSkipped", false)
                     .setAttribute("turnstileSiteKey", configMap.get(CONFIG_SITE_KEY))
+                    .setAttribute("turnstileCdata", CloudflareTurnstileHelper.sessionCdata(context.getAuthenticationSession()))
                     .setAttribute("turnstileTheme", configMap.getOrDefault(CONFIG_WIDGET_THEME, "auto"))
                     .setAttribute("enableDebugLogging", Boolean.parseBoolean(configMap.getOrDefault(CONFIG_ENABLE_DEBUG_LOGGING, "false")));
             WidgetAppearance.fromConfig(configMap.get(CONFIG_WIDGET_APPEARANCE)).setAttributes(form);
@@ -404,7 +407,7 @@ public class CloudflareTurnstileAuthenticator extends AbstractUsernameFormAuthen
     /** One submission: the step's effective settings and the request's circumstances, resolved once. */
     private record Attempt(AuthenticationFlowContext context, Map<String, String> settings, String ipAddress,
                            String implementationMethod, boolean inline, boolean reset, boolean registration,
-                           String failMode, String failAction, String allowlistBehavior, boolean record) {
+                           String failMode, String failAction, String allowlistBehavior, boolean record, String cdata) {
 
         static Attempt of(AuthenticationFlowContext context) {
             Map<String, String> settings = CloudflareTurnstileRealmSettings.effective(context.getSession(), context.getRealm(),
@@ -415,7 +418,8 @@ public class CloudflareTurnstileAuthenticator extends AbstractUsernameFormAuthen
                     isResetCredentialsFlow(context), isRegistrationFlow(context),
                     settings.getOrDefault(CONFIG_FAIL_MODE, FAIL_CLOSED), settings.getOrDefault(CONFIG_FAIL_ACTION, FAIL_ACTION_BLOCK),
                     settings.getOrDefault(CONFIG_ALLOWLIST_BEHAVIOR, ALLOWLIST_VERIFY_BUT_ALLOW),
-                    Boolean.parseBoolean(settings.getOrDefault(CONFIG_RECORD_VERIFICATIONS, "true")));
+                    Boolean.parseBoolean(settings.getOrDefault(CONFIG_RECORD_VERIFICATIONS, "true")),
+                    context.getAuthenticationSession().getAuthNote(CloudflareTurnstileHelper.CDATA_NOTE));
         }
     }
 
@@ -468,7 +472,7 @@ public class CloudflareTurnstileAuthenticator extends AbstractUsernameFormAuthen
         int readTimeout = CloudflareTurnstileHelper.getReadTimeout(attempt.settings());
         try (CloudflareTurnstileService service = new CloudflareTurnstileService(attempt.settings().get(CONFIG_SECRET_KEY),
                 connectTimeout, readTimeout)) {
-            return service.verify(token, attempt.ipAddress());
+            return service.verify(token, attempt.ipAddress(), attempt.cdata());
         }
     }
 

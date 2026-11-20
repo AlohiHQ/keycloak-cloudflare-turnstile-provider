@@ -15,6 +15,7 @@
                     <div class="${properties.kcFormGroupClass!}" style="display: flex; justify-content: center; align-items: center; min-height: 100px;">
                         <div class="cf-turnstile"
                              data-sitekey="${turnstileSiteKey}"
+                             data-cdata="${turnstileCdata!''}"
                              data-theme="${turnstileTheme}"
                              data-size="normal"
                              data-appearance="${turnstileAppearance!'always'}"
