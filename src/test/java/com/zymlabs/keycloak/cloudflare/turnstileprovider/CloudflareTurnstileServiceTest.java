@@ -415,6 +415,5 @@ class CloudflareTurnstileServiceTest {
 
         assertThat(result.isSuccess()).isFalse();
         assertThat(result.getErrorCodes()).isEqualTo(CloudflareTurnstileService.CDATA_MISMATCH);
-        assertThat(result.getEphemeralId()).isEqualTo("x:9f78e0ed");
     }
 }

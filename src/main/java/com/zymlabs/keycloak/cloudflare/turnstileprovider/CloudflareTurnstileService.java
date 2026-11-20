@@ -136,8 +136,6 @@ public class CloudflareTurnstileService implements Closeable {
         String challengeTs = jsonResponse.has("challenge_ts") ? jsonResponse.get("challenge_ts").asText() : null;
         String hostname = jsonResponse.has("hostname") ? jsonResponse.get("hostname").asText() : null;
         String cdata = jsonResponse.has("cdata") ? jsonResponse.get("cdata").asText() : null;
-        // Cloudflare's device fingerprint; Enterprise-only, so null on every other plan
-        String ephemeralId = jsonResponse.path("metadata").path("ephemeral_id").asText(null);
         boolean testingKey = jsonResponse.path("metadata").path("result_with_testing_key").asBoolean();
 
         // Extract error codes if present
@@ -164,7 +162,7 @@ public class CloudflareTurnstileService implements Closeable {
         }
 
         TurnstileVerificationResult result = new TurnstileVerificationResult(
-                success, errorCodes, challengeTs, hostname, responseBody, cdata, ephemeralId);
+                success, errorCodes, challengeTs, hostname, responseBody, cdata);
 
         if (success) {
             logger.infof("Turnstile verification successful for IP: %s, hostname: %s", remoteIp, hostname);
@@ -203,18 +201,15 @@ public class CloudflareTurnstileService implements Closeable {
         private final String hostname;
         private final String rawResponse;
         private final String cdata;
-        private final String ephemeralId;
 
         /** A result Keycloak made up itself (allowlisted, fail-open, or an error): Cloudflare said nothing. */
         public TurnstileVerificationResult(boolean success, String errorCodes, String challengeTs,
                 String hostname, String rawResponse) {
-            this(success, errorCodes, challengeTs, hostname, rawResponse, null, null);
+            this(success, errorCodes, challengeTs, hostname, rawResponse, null);
         }
 
         public TurnstileVerificationResult(boolean success, String errorCodes, String challengeTs,
-                                          String hostname, String rawResponse, String cdata,
-                                          String ephemeralId) {
-            this.ephemeralId = ephemeralId;
+                                          String hostname, String rawResponse, String cdata) {
             this.success = success;
             this.errorCodes = errorCodes;
             this.challengeTs = challengeTs;
@@ -247,16 +242,11 @@ public class CloudflareTurnstileService implements Closeable {
             return cdata;
         }
 
-        /** Cloudflare's device fingerprint, or null: it is an Enterprise-only field. */
-        public String getEphemeralId() {
-            return ephemeralId;
-        }
-
         @Override
         public String toString() {
             return String.format(
-                    "TurnstileVerificationResult{success=%s, errorCodes=%s, hostname=%s, cdata=%s, ephemeralId=%s}",
-                    success, errorCodes, hostname, cdata, ephemeralId
+                    "TurnstileVerificationResult{success=%s, errorCodes=%s, hostname=%s, cdata=%s}",
+                    success, errorCodes, hostname, cdata
             );
         }
     }
